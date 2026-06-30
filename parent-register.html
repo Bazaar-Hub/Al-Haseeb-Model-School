@@ -72,10 +72,13 @@ function toE164(raw){
   return '+92'+p;
 }
 
+let recaptchaReady=null;
 function setupRecaptcha(){
-  if(recaptchaVerifier)return recaptchaVerifier;
-  recaptchaVerifier=new RecaptchaVerifier(auth,'recaptcha-container',{size:'invisible'});
-  return recaptchaVerifier;
+  if(!recaptchaVerifier){
+    recaptchaVerifier=new RecaptchaVerifier(auth,'recaptcha-container',{size:'invisible'});
+    recaptchaReady=recaptchaVerifier.render();
+  }
+  return recaptchaReady;
 }
 
 window.sendOtp=async function(isResend){
@@ -87,9 +90,8 @@ window.sendOtp=async function(isResend){
   const btn=document.getElementById('sendBtn');
   btn.innerHTML='<span class="loader"></span> Sending...';
   try{
-    const verifier=setupRecaptcha();
-    await verifier.render();
-    confirmationResult=await signInWithPhoneNumber(auth,e164,verifier);
+    await setupRecaptcha();
+    confirmationResult=await signInWithPhoneNumber(auth,e164,recaptchaVerifier);
     verifiedPhone=e164;
     document.getElementById('phoneShown').textContent=e164;
     if(!isResend)goStep(2);
@@ -100,13 +102,13 @@ window.sendOtp=async function(isResend){
     let m='Could not send code. Please try again.';
     if(e.code==='auth/invalid-phone-number')m='Invalid phone number format.';
     if(e.code==='auth/too-many-requests')m='Too many attempts. Try again later.';
-    if(e.code==='auth/operation-not-allowed')m='Phone sign-in is not enabled yet in Firebase Console (Authentication → Sign-in method → Phone).';
+    if(e.code==='auth/operation-not-allowed')m='Phone sign-in blocked: '+(e.message||'').replace('Firebase: ','').replace(/\(auth\/[^)]+\)\.?/,'').trim()+' If Phone is already enabled, check Authentication → Sign-in method → Phone → SMS region policy and allow Pakistan (PK).';
     if(e.code==='auth/billing-not-enabled')m='Phone verification needs Firebase Blaze (pay-as-you-go) plan enabled.';
     if(e.code==='auth/captcha-check-failed'||e.code==='auth/invalid-app-credential')m='reCAPTCHA check failed — refresh the page and try again.';
     if(e.code==='auth/internal-error')m='Firebase rejected the request — usually means this domain isn\'t in Authorized Domains, or Phone sign-in/reCAPTCHA Enterprise isn\'t configured correctly. See README for the fix.';
     if(e.code)m+=' ('+e.code+')';
     showErr(m);
-    if(recaptchaVerifier){try{recaptchaVerifier.clear();}catch(_){}recaptchaVerifier=null;}
+    if(recaptchaVerifier){try{recaptchaVerifier.clear();}catch(_){}recaptchaVerifier=null;recaptchaReady=null;}
   }
   btn.innerHTML='<i class="fas fa-comment-sms"></i> Send Verification Code';
 };
