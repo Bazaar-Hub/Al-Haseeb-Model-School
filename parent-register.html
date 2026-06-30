@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Parent Register – AHMSS</title>
+<link rel="stylesheet" href="main.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<style>.step{display:none}.step.on{display:block}.otp-box{display:flex;gap:8px;justify-content:center;margin-bottom:6px}.otp-box input{width:42px;height:50px;text-align:center;font-size:20px;font-weight:800;border-radius:var(--r8);border:1.5px solid var(--border);background:var(--bg);outline:none;transition:var(--ease)}.otp-box input:focus{border-color:var(--g4);background:#fff;box-shadow:0 0 0 3px rgba(46,139,74,.1)}.verify-tick{display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1.5px solid #bbf7d0;color:#166534;padding:10px 14px;border-radius:var(--r8);font-size:13px;font-weight:700;margin-bottom:19px}.resend-row{text-align:center;font-size:12.5px;color:var(--ink4);margin-top:14px}.resend-row a{color:var(--g5);font-weight:700;cursor:pointer}</style>
+</head>
+<body class="auth-pg">
+<div class="auth-card" style="max-width:500px">
+  <div class="auth-logo-wrap">
+    <img src="logo.png" class="auth-logo" alt="AHMSS"/>
+    <div class="auth-ttl">Parent Registration</div>
+    <div class="auth-sub" id="subTxt">Step 1 of 2 — Verify your phone number</div>
+  </div>
+  <div class="alert alert-err" id="err" style="display:none"><i class="fas fa-exclamation-circle"></i> <span id="eTxt"></span></div>
+  <div class="alert alert-ok" id="ok" style="display:none"><i class="fas fa-check-circle"></i> Account created! Redirecting to login...</div>
+
+  <!-- STEP 1: ENTER PHONE -->
+  <div class="step on" id="step1">
+    <div class="f-group"><label class="f-label">Phone Number *</label><input class="f-input" id="phone" type="tel" placeholder="03XX-XXXXXXX"/></div>
+    <div id="recaptcha-container" style="margin-bottom:14px"></div>
+    <button class="btn-auth" id="sendBtn" onclick="sendOtp()"><i class="fas fa-comment-sms"></i> Send Verification Code</button>
+  </div>
+
+  <!-- STEP 2: ENTER OTP -->
+  <div class="step" id="step2">
+    <p style="font-size:13px;color:var(--ink3);text-align:center;margin-bottom:18px">Enter the 6-digit code sent to <b id="phoneShown"></b></p>
+    <div class="otp-box">
+      <input maxlength="1" inputmode="numeric" data-i="0"/><input maxlength="1" inputmode="numeric" data-i="1"/><input maxlength="1" inputmode="numeric" data-i="2"/><input maxlength="1" inputmode="numeric" data-i="3"/><input maxlength="1" inputmode="numeric" data-i="4"/><input maxlength="1" inputmode="numeric" data-i="5"/>
+    </div>
+    <div class="resend-row">Didn't get the code? <a onclick="sendOtp(true)">Resend</a> &nbsp;·&nbsp; <a onclick="backToPhone()">Change number</a></div>
+    <button class="btn-auth" id="verifyBtn" onclick="verifyOtp()" style="margin-top:18px"><i class="fas fa-shield-check"></i> Verify Code</button>
+  </div>
+
+  <!-- STEP 3: ACCOUNT DETAILS -->
+  <div class="step" id="step3">
+    <div class="verify-tick"><i class="fas fa-circle-check"></i> Phone number verified</div>
+    <div class="f-group"><label class="f-label">Full Name *</label><input class="f-input" id="name" placeholder="Your full name"/></div>
+    <div class="f-group"><label class="f-label">Email Address *</label><input class="f-input" id="email" type="email" placeholder="email@example.com"/></div>
+    <div class="f-group"><label class="f-label">Password * (min 6 chars)</label><input class="f-input" id="pass" type="password" placeholder="Create a password"/></div>
+    <div class="f-group"><label class="f-label">Confirm Password *</label><input class="f-input" id="pass2" type="password" placeholder="Repeat password"/></div>
+    <button class="btn-auth" id="regBtn" onclick="doReg()"><i class="fas fa-user-plus"></i> Create Account</button>
+  </div>
+
+  <div class="auth-links" style="margin-top:20px">Already have an account? <a href="parent-login.html">Login here</a> &nbsp;·&nbsp; <a href="index.html"><i class="fas fa-home"></i> Home</a></div>
+</div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore,doc,setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth,createUserWithEmailAndPassword,signInWithPhoneNumber,RecaptchaVerifier,signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+const app=initializeApp({apiKey:"AIzaSyDY4km6C-eV8skgy7WeKiOK-lwjJrn1YBg",authDomain:"al-haseeb-model-sec-school.firebaseapp.com",projectId:"al-haseeb-model-sec-school",storageBucket:"al-haseeb-model-sec-school.firebasestorage.app",messagingSenderId:"317147728391",appId:"1:317147728391:web:cc489df27da6bae857b8a2"});
+const db=getFirestore(app);const auth=getAuth(app);
+
+let confirmationResult=null;
+let verifiedPhone='';
+let recaptchaVerifier=null;
+
+function showErr(msg){const err=document.getElementById('err');document.getElementById('eTxt').textContent=msg;err.style.display='flex';}
+function hideMsgs(){document.getElementById('err').style.display='none';document.getElementById('ok').style.display='none';}
+function goStep(n){document.querySelectorAll('.step').forEach(s=>s.classList.remove('on'));document.getElementById('step'+n).classList.add('on');
+  document.getElementById('subTxt').textContent = n===3 ? 'Step 2 of 2 — Complete your details' : 'Step 1 of 2 — Verify your phone number';}
+
+// Convert local Pakistani format (03XXXXXXXXX) to E.164 (+923XXXXXXXXX)
+function toE164(raw){
+  let p=raw.replace(/[\s-]/g,'');
+  if(p.startsWith('+'))return p;
+  if(p.startsWith('0'))return '+92'+p.slice(1);
+  if(p.startsWith('92'))return '+'+p;
+  return '+92'+p;
+}
+
+let recaptchaReady=null;
+function setupRecaptcha(){
+  if(!recaptchaVerifier){
+    recaptchaVerifier=new RecaptchaVerifier(auth,'recaptcha-container',{size:'invisible'});
+    recaptchaReady=recaptchaVerifier.render();
+  }
+  return recaptchaReady;
+}
+
+window.sendOtp=async function(isResend){
+  hideMsgs();
+  const rawPhone=document.getElementById('phone').value.trim();
+  if(!rawPhone){showErr('Please enter your phone number.');return;}
+  const e164=toE164(rawPhone);
+  if(!/^\+92\d{10}$/.test(e164)){showErr('Enter a valid Pakistani number, e.g. 03XX-XXXXXXX.');return;}
+  const btn=document.getElementById('sendBtn');
+  btn.innerHTML='<span class="loader"></span> Sending...';
+  try{
+    await setupRecaptcha();
+    confirmationResult=await signInWithPhoneNumber(auth,e164,recaptchaVerifier);
+    verifiedPhone=e164;
+    document.getElementById('phoneShown').textContent=e164;
+    if(!isResend)goStep(2);
+    document.querySelectorAll('.otp-box input').forEach(i=>i.value='');
+    document.querySelectorAll('.otp-box input')[0]?.focus();
+  }catch(e){
+    console.error('OTP send error:',e);
+    let m='Could not send code. Please try again.';
+    if(e.code==='auth/invalid-phone-number')m='Invalid phone number format.';
+    if(e.code==='auth/too-many-requests')m='Too many attempts. Try again later.';
+    if(e.code==='auth/operation-not-allowed')m='Phone sign-in blocked: '+(e.message||'').replace('Firebase: ','').replace(/\(auth\/[^)]+\)\.?/,'').trim()+' If Phone is already enabled, check Authentication → Sign-in method → Phone → SMS region policy and allow Pakistan (PK).';
+    if(e.code==='auth/billing-not-enabled')m='Phone verification needs Firebase Blaze (pay-as-you-go) plan enabled.';
+    if(e.code==='auth/captcha-check-failed'||e.code==='auth/invalid-app-credential')m='reCAPTCHA check failed — refresh the page and try again.';
+    if(e.code==='auth/internal-error')m='Firebase rejected the request — usually means this domain isn\'t in Authorized Domains, or Phone sign-in/reCAPTCHA Enterprise isn\'t configured correctly. See README for the fix.';
+    if(e.code)m+=' ('+e.code+')';
+    showErr(m);
+    if(recaptchaVerifier){try{recaptchaVerifier.clear();}catch(_){}recaptchaVerifier=null;recaptchaReady=null;}
+  }
+  btn.innerHTML='<i class="fas fa-comment-sms"></i> Send Verification Code';
+};
+
+window.backToPhone=function(){hideMsgs();goStep(1);};
+
+// OTP box auto-advance/backspace behavior
+document.querySelectorAll('.otp-box input').forEach(inp=>{
+  inp.addEventListener('input',()=>{
+    inp.value=inp.value.replace(/\D/g,'').slice(0,1);
+    if(inp.value){const next=document.querySelector(`.otp-box input[data-i="${+inp.dataset.i+1}"]`);if(next)next.focus();}
+  });
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Backspace'&&!inp.value){const prev=document.querySelector(`.otp-box input[data-i="${+inp.dataset.i-1}"]`);if(prev){prev.focus();}}
+  });
+});
+
+window.verifyOtp=async function(){
+  hideMsgs();
+  const code=[...document.querySelectorAll('.otp-box input')].map(i=>i.value).join('');
+  if(code.length!==6){showErr('Enter the full 6-digit code.');return;}
+  if(!confirmationResult){showErr('Please request a new code.');return;}
+  const btn=document.getElementById('verifyBtn');
+  btn.innerHTML='<span class="loader"></span> Verifying...';
+  try{
+    await confirmationResult.confirm(code);
+    // phone confirmed — sign out this temporary phone-auth session, we'll create the real email/password account next
+    await signOut(auth);
+    goStep(3);
+  }catch(e){
+    showErr('Incorrect code. Please try again.');
+  }
+  btn.innerHTML='<i class="fas fa-shield-check"></i> Verify Code';
+};
+
+window.doReg=async function(){
+  hideMsgs();
+  const name=document.getElementById('name').value.trim(),email=document.getElementById('email').value.trim(),pass=document.getElementById('pass').value,pass2=document.getElementById('pass2').value;
+  if(!name||!email||!pass){showErr('All fields required.');return;}
+  if(pass!==pass2){showErr('Passwords do not match.');return;}
+  if(pass.length<6){showErr('Password min 6 characters.');return;}
+  document.getElementById('regBtn').innerHTML='<span class="loader"></span> Creating...';
+  try{
+    const c=await createUserWithEmailAndPassword(auth,email,pass);
+    await setDoc(doc(db,'parents',c.user.uid),{name,email,phone:verifiedPhone,phoneVerified:true,uid:c.user.uid,createdAt:new Date().toISOString()});
+    document.getElementById('ok').style.display='flex';
+    setTimeout(()=>window.location.href='parent-login.html',2000);
+  }catch(e){
+    let m='Registration failed.';
+    if(e.code==='auth/email-already-in-use')m='This email is already registered.';
+    if(e.code==='auth/invalid-email')m='Invalid email address.';
+    showErr(m);
+  }
+  document.getElementById('regBtn').innerHTML='<i class="fas fa-user-plus"></i> Create Account';
+};
+</script>
+</body></html>
